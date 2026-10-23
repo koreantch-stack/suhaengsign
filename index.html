@@ -399,6 +399,20 @@ async function pageData(pi){
 /* ---------- 자동 인식 ---------- */
 const EXCL=['성명','이름','번호','비고','합계','총점','평균','학번','담임','교사','과목','학년','점수','만점','확인','서명','교과','담당','교감','교장','결재','평가','영역','반'];
 const isName=s=>{const n=norm(s);return /^[가-힣]{2,5}$/.test(n)&&!EXCL.includes(n);};
+const fmtNum=v=>{const t=String(v??'').trim();return /^\d+\.\d+$/.test(t)?String(parseFloat(t)):t;};
+// 두 줄로 나뉜 머리글을 이을 때, 한글끼리 이어지면 붙여 쓴다
+function joinParts(parts){let out='';for(const p of parts){if(!p)continue;if(!out){out=p;continue;}
+  out+=(/[가-힣]$/.test(out)&&/^[가-힣]/.test(p))?'':' ';out+=p;}return out.replace(/\s+/g,' ').trim();}
+const cleanItemName=n=>n.replace(/\(\s*만점[^)]*\)/g,'').replace(/\(\s*\d+(?:\.\d+)?\s*점\s*\)/g,'').replace(/\s+/g,' ').trim();
+const isTotalName=n=>/^(합계|총점|총계|계|합|총합)$/.test(norm(n));
+function syncTotal(){
+  if(!S)return;
+  for(const it of S.items)if(it.auto===undefined)it.auto=isTotalName(it.name)&&!String(it.max||'').trim();
+  const others=S.items.filter(it=>!it.auto&&!isTotalName(it.name));
+  const nums=others.map(it=>parseFloat(it.max));
+  const sum=nums.length&&nums.every(n=>!isNaN(n))?String(Math.round(nums.reduce((a,b)=>a+b,0)*100)/100):'';
+  S.items.forEach((it,i)=>{if(it.auto){it.max=sum;const el=document.querySelector(`input[data-item="${i}"][data-k="max"]`);if(el&&document.activeElement!==el)el.value=sum;}});
+}
 function parseMax(s){const m=s.match(/\((\d+(?:\.\d+)?)\s*점?\)/)||s.match(/(\d+(?:\.\d+)?)\s*점/)||s.match(/만점\D{0,3}(\d+(?:\.\d+)?)/);return m?m[1]:'';}
 
 // 행(줄) 위아래 경계: 표 가로선 → 없으면 이웃 학생과의 중간
@@ -468,14 +482,15 @@ async function analyzePage(pi){
     const half=Math.min(i>0?(x-colsX[i-1])/2:30,i<colsX.length-1?(colsX[i+1]-x)/2:30);
     const parts=[];
     for(const L of hdrLines)for(const c of L.cells){if((c.x0-2<=x&&c.x1+2>=x)||Math.abs(cxOf(c)-x)<half)parts.push(c.s.trim());}
-    const name=parts.join(' ').replace(/\s+/g,' ').trim();
-    return{name:name||`항목 ${i+1}`,max:parseMax(name),show:true};
+    const raw=joinParts(parts);const name=cleanItemName(raw);
+    return{name:name||raw||`항목 ${i+1}`,max:fmtNum(parseMax(raw)),show:true};
   });
   const rows=studs.map(s=>{
     const scores=colsX.map(()=>'');
     for(const c of s.L.cells){if(c===s.nc||c===s.noCell)continue;const x=cxOf(c);if(x<=nameRight||x>=bigo.x0-1)continue;
       let bi=-1,bd=1e9;colsX.forEach((cx,i)=>{const d=Math.abs(cx-x);if(d<bd){bd=d;bi=i;}});
       if(bi>=0)scores[bi]=(scores[bi]?scores[bi]+' ':'')+c.s.trim();}
+    for(let i=0;i<scores.length;i++)scores[i]=fmtNum(scores[i]);
     return{page:pi,no:s.no,name:norm(s.nc.s),y:s.L.y,h:s.L.h,scores};
   });
   const bx=cxOf(bigo);
@@ -495,7 +510,7 @@ async function runAuto(){
   for(let pi=0;pi<pdfDoc.numPages;pi++){const r=await analyzePage(pi);if(r)res.push(r);}
   if(!res.length)return false;
   const first=res.reduce((a,b)=>b.items.length>a.items.length?b:a);
-  S.items=first.items;S.cols={};S.students=[];
+  S.items=first.items;S.cols={};S.students=[];syncTotal();
   for(const r of res){
     S.cols[r.rows[0].page]=r.col;
     for(const row of r.rows){
@@ -535,7 +550,7 @@ function openReview(warning){
   msg($('#rvMsg'),warning||(n?`학생 ${n}명, 평가 항목 ${S.items.length}개를 찾았습니다. 서명 ${signed}명 완료.`:''),warning?'warn':'ok');
   $('#skipText').value=S.skipText||'';$('#pinSet').value=S.pin||'';
   for(const k of ['l','r','dy','pad'])$('#o_'+k).textContent=S.adj[k];
-  renderItems();renderStudents();updateExportInfo();
+  syncTotal();renderItems();renderStudents();updateExportInfo();
   const pages=pagesWithStudents();view=pages.includes(view)?view:(pages[0]??0);
   renderPreview();
 }
@@ -550,7 +565,7 @@ function renderStudents(){
 }
 document.addEventListener('input',e=>{
   const t=e.target;if(!S)return;
-  if(t.dataset.item!=null){const it=S.items[+t.dataset.item];if(t.dataset.k==='show')it.show=t.checked;else it[t.dataset.k]=t.value;if(t.dataset.k==='name')$('#stHead').querySelectorAll('th')[3+ +t.dataset.item].textContent=t.value;save();}
+  if(t.dataset.item!=null){const it=S.items[+t.dataset.item];if(t.dataset.k==='show')it.show=t.checked;else it[t.dataset.k]=t.value;if(t.dataset.k==='max'){if(it.auto)it.auto=false;syncTotal();}if(t.dataset.k==='name'&&it.auto===false&&isTotalName(it.name)&&!String(it.max).trim()){it.auto=true;syncTotal();}if(t.dataset.k==='name')$('#stHead').querySelectorAll('th')[3+ +t.dataset.item].textContent=t.value;save();}
   else if(t.dataset.st!=null){const s=S.students[+t.dataset.st];if(t.dataset.k==='sc')s.scores[+t.dataset.j]=t.value;else{s[t.dataset.k]=t.value;if(t.dataset.k==='name')drawBoxes();}save();}
   else if(t.id==='skipText'){S.skipText=t.value;save();}
   else if(t.id==='rvTitle'){S.title=t.value.trim()||S.fileName.replace(/\.pdf$/i,'');save();}
@@ -611,7 +626,7 @@ function openSign(){
   show('scr-sign');
   $('#sgWho').textContent=noLabel(current.no)+current.name;
   const rows=S.items.map((it,i)=>({it,v:current.scores[i]})).filter(r=>r.it.show!==false);
-  $('#sgScores').innerHTML=rows.map(r=>`<div class="sc"><span class="it">${esc(r.it.name)}</span><span class="val">${esc(r.v||'-')}${r.it.max?` <small>/ ${esc(r.it.max)}</small>`:''}</span></div>`).join('')||'<p class="muted">표시할 항목이 없습니다.</p>';
+  $('#sgScores').innerHTML=rows.map(r=>`<div class="sc"><span class="it">${esc(r.it.name)}</span><span class="val">${esc(fmtNum(r.v)||'-')}${r.it.max?` <small>/ ${esc(fmtNum(r.it.max))}</small>`:''}</span></div>`).join('')||'<p class="muted">표시할 항목이 없습니다.</p>';
   setupPad();
 }
 $('#sgCancel').onclick=()=>{current=null;openList();};
