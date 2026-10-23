@@ -635,7 +635,8 @@ async function renderPreview(){
 function drawBoxes(){
   const el=$('#pvBoxes');if(!S||S.kind!=='pdf'){el.innerHTML='';return;}
   el.innerHTML=S.people.filter(p=>p.page===view).map(p=>{const b=boxOf(p);const k=pvScale;const sig=S.sigs[p.id];
-    return`<div class="box ${sig?'done':''}" style="left:${b.x0*k}px;top:${b.y0*k}px;width:${Math.max(2,(b.x1-b.x0)*k)}px;height:${Math.max(2,(b.y1-b.y0)*k)}px">${sig?`<img src="${sig}" alt="">`:`<span>${esc(p.name)}</span>`}</div>`;}).join('');
+    return`<div class="box ${sig?'done':''}" style="left:${b.x0*k}px;top:${b.y0*k}px;width:${Math.max(2,(b.x1-b.x0)*k)}px;height:${Math.max(2,(b.y1-b.y0)*k)}px">${sig?`<img src="${sig}" data-sid="${esc(p.id)}" alt="">`:`<span>${esc(p.name)}</span>`}</div>`;}).join('');
+  boldPreviews();
 }
 $('#pvPrev').onclick=()=>{const p=pagesWithPeople().filter(p=>p<view);if(p.length){view=p[p.length-1];renderPreview();}};
 $('#pvNext').onclick=()=>{const p=pagesWithPeople().find(p=>p>view);if(p!=null){view=p;renderPreview();}};
@@ -666,7 +667,7 @@ function setupPad(){
   g.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--pen').trim()||'#111';g.fillStyle=g.strokeStyle;
   pad.drawn=false;$('#padHint').hidden=false;$('#sgOk').disabled=true;
 }
-function pt(e){const r=$('#pad').getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top,w:e.pointerType==='pen'&&e.pressure>0?1.6+e.pressure*2.6:3};}
+function pt(e){const r=$('#pad').getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top,w:e.pointerType==='pen'&&e.pressure>0?2.4+e.pressure*3:4.5};}
 const padEl=$('#pad');
 padEl.addEventListener('pointerdown',e=>{e.preventDefault();padEl.setPointerCapture(e.pointerId);pad.down=true;const p=pt(e);pad.p0=pad.p1=p;
   const g=padEl.getContext('2d');g.beginPath();g.arc(p.x,p.y,p.w/2,0,Math.PI*2);g.fill();
@@ -735,8 +736,7 @@ async function buildGenPdf(){
         txt(pg,per.role,(xs[1]+xs[2])/2,yc,9.5,'center',cw[1]-4);
         txt(pg,per.name,(xs[2]+xs[3])/2,yc,10,'center',cw[2]-4);
         const bx=xs[3]+3,by=top-HR-(r+1)*RH+2.5,bw=cw[3]-6,bh=RH-5;
-        if(S.sigs[per.id]){const img=await doc.embedPng(S.sigs[per.id]);const sc=Math.min(bw/img.width,bh/img.height);const w=img.width*sc,h=img.height*sc;
-          pg.drawImage(img,{x:bx+(bw-w)/2,y:by+(bh-h)/2,width:w,height:h});}
+        if(S.sigs[per.id]){const img=await doc.embedPng((await boldSig(S.sigs[per.id],bw*5,bh*5)).toDataURL('image/png'));pg.drawImage(img,{x:bx,y:by,width:bw,height:bh});}
         else if(skip)txt(pg,skip,(xs[3]+xs[4])/2,yc,9.5,'center',cw[3]-6);
       }
     }
@@ -744,10 +744,33 @@ async function buildGenPdf(){
   return doc.save();
 }
 function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+// 서명을 W×H 칸에 맞춰 그리고, 줄어들어 가늘어진 선을 진한 검정으로 굵게 만든다
+async function boldSig(src,W,H){
+  W=Math.max(4,Math.round(W));H=Math.max(4,Math.round(H));
+  const img=await loadImg(src);
+  const s=Math.min(W/img.width,H/img.height);const w=img.width*s,h=img.height*s;
+  const t=document.createElement('canvas');t.width=W;t.height=H;const tg=t.getContext('2d');
+  tg.drawImage(img,(W-w)/2,(H-h)/2,w,h);
+  const d=tg.getImageData(0,0,W,H),a=d.data;
+  for(let i=0;i<a.length;i+=4){const al=a[i+3];a[i]=a[i+1]=a[i+2]=0;a[i+3]=al<10?0:Math.min(255,al*3);}
+  tg.putImageData(d,0,0);
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
+  const r=Math.max(1,Math.round(Math.min(W,H)*0.035));
+  for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){if(dx*dx+dy*dy<=r*r+0.5)g.drawImage(t,dx,dy);}
+  return cv;
+}
+const boldCache={};
+async function boldPreviews(){
+  for(const im of document.querySelectorAll('#pvBoxes img[data-sid]')){
+    const box=im.parentElement;const W=box.clientWidth*2,H=box.clientHeight*2;if(W<4||H<4)continue;
+    const key=im.dataset.sid+'|'+Math.round(W)+'x'+Math.round(H)+'|'+S.sigs[im.dataset.sid].length;
+    try{if(!boldCache[key])boldCache[key]=(await boldSig(S.sigs[im.dataset.sid],W,H)).toDataURL('image/png');im.src=boldCache[key];}catch(e){}
+  }
+}
 async function boxImage(st,b,kind,text){
   const K=5,cv=document.createElement('canvas');cv.width=Math.max(4,Math.round((b.x1-b.x0)*K));cv.height=Math.max(4,Math.round((b.y1-b.y0)*K));
   const g=cv.getContext('2d');
-  if(kind==='sig'){const img=await loadImg(S.sigs[st.id]);const s=Math.min(cv.width/img.width,cv.height/img.height);const w=img.width*s,h=img.height*s;g.drawImage(img,(cv.width-w)/2,(cv.height-h)/2,w,h);}
+  if(kind==='sig'){g.drawImage(await boldSig(S.sigs[st.id],cv.width,cv.height),0,0);}
   else{let fs=cv.height*0.62;const f=()=>`${fs}px "IBM Plex Sans KR","Malgun Gothic",sans-serif`;g.font=f();
     while(g.measureText(text).width>cv.width*0.94&&fs>6){fs-=1;g.font=f();}
     g.fillStyle='#000';g.textAlign='center';g.textBaseline='middle';g.fillText(text,cv.width/2,cv.height/2);}
