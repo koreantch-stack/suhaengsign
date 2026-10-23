@@ -692,7 +692,7 @@ async function boldSig(src,W,H){
   for(let i=0;i<a.length;i+=4){const al=a[i+3];a[i]=a[i+1]=a[i+2]=0;a[i+3]=al<10?0:Math.min(255,al*3);}
   tg.putImageData(d,0,0);
   const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
-  const r=Math.max(1,Math.round(Math.min(W,H)*0.035));
+  const r=Math.max(1,Math.round(Math.min(W,H)*0.0175));
   for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){if(dx*dx+dy*dy<=r*r+0.5)g.drawImage(t,dx,dy);}
   return cv;
 }
