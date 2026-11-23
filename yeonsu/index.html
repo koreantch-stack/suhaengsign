@@ -99,7 +99,7 @@ details summary{cursor:pointer;font-weight:600}
 .sc .val{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:1.3rem;font-weight:700}
 .sc .val small{font-size:.95rem;color:var(--muted);font-weight:500}
 .padwrap{position:relative;background:var(--paper);border:2px solid var(--line);border-radius:10px;overflow:hidden}
-#pad{display:block;width:100%;height:260px;touch-action:none;cursor:crosshair}
+#pad{display:block;width:100%;height:260px;touch-action:none;cursor:crosshair;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .padhint{position:absolute;left:0;right:0;bottom:44%;text-align:center;color:#9aa3ad;pointer-events:none;font-size:1.05rem}
 .baseline{position:absolute;left:8%;right:8%;bottom:28%;border-bottom:1.5px dashed #c6ccd3;pointer-events:none}
 .modal{position:fixed;inset:0;background:rgba(10,14,20,.55);display:grid;place-items:center;padding:16px;z-index:20}
@@ -659,26 +659,32 @@ $('#cfNo').onclick=()=>{current=null;openList();};
 $('#cfYes').onclick=()=>{show('scr-sign');$('#sgWho').textContent=who(current);$('#sgTitle').textContent=S.title||'';$('#sgWhen').textContent=whenStr();setupPad();};
 $('#sgCancel').onclick=()=>{current=null;openList();};
 /* 서명 패드 */
-const pad={drawn:false,down:false,p0:null,p1:null};
+const pad={drawn:false,down:false,p0:null,p1:null,g:null,rect:null,id:null,pen:false};
 function setupPad(){
   const c=$('#pad');const r=c.getBoundingClientRect();const d=window.devicePixelRatio||1;
   c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);
   const g=c.getContext('2d');g.setTransform(d,0,0,d,0,0);g.lineCap='round';g.lineJoin='round';
   g.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--pen').trim()||'#111';g.fillStyle=g.strokeStyle;
-  pad.drawn=false;$('#padHint').hidden=false;$('#sgOk').disabled=true;
+  pad.g=g;pad.rect=r;pad.down=false;pad.id=null;pad.pen=false;pad.drawn=false;$('#padHint').hidden=false;$('#sgOk').disabled=true;
 }
-function pt(e){const r=$('#pad').getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top,w:e.pointerType==='pen'&&e.pressure>0?2.4+e.pressure*3:4.5};}
+function pt(e){const r=pad.rect;return{x:e.clientX-r.left,y:e.clientY-r.top,w:e.pointerType==='pen'&&e.pressure>0?2.4+e.pressure*3:4.5};}
 const padEl=$('#pad');
-padEl.addEventListener('pointerdown',e=>{e.preventDefault();padEl.setPointerCapture(e.pointerId);pad.down=true;const p=pt(e);pad.p0=pad.p1=p;
-  const g=padEl.getContext('2d');g.beginPath();g.arc(p.x,p.y,p.w/2,0,Math.PI*2);g.fill();
+padEl.addEventListener('pointerdown',e=>{e.preventDefault();
+  if(e.pointerType==='pen')pad.pen=true;
+  if(pad.pen&&e.pointerType==='touch')return;
+  if(pad.down&&e.pointerId!==pad.id)return;
+  pad.rect=padEl.getBoundingClientRect();
+  try{padEl.setPointerCapture(e.pointerId);}catch(_){}
+  pad.down=true;pad.id=e.pointerId;const p=pt(e);pad.p0=pad.p1=p;
+  const g=pad.g;g.beginPath();g.arc(p.x,p.y,p.w/2,0,Math.PI*2);g.fill();
   if(!pad.drawn){pad.drawn=true;$('#padHint').hidden=true;$('#sgOk').disabled=false;}});
-padEl.addEventListener('pointermove',e=>{if(!pad.down)return;e.preventDefault();const g=padEl.getContext('2d');
+padEl.addEventListener('pointermove',e=>{if(!pad.down||e.pointerId!==pad.id)return;e.preventDefault();const g=pad.g;
   const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
   for(const ev of (evs.length?evs:[e])){const p2=pt(ev);const p0=pad.p0,p1=pad.p1;
     g.beginPath();g.moveTo((p0.x+p1.x)/2,(p0.y+p1.y)/2);g.quadraticCurveTo(p1.x,p1.y,(p1.x+p2.x)/2,(p1.y+p2.y)/2);g.lineWidth=p2.w;g.stroke();
     pad.p0=p1;pad.p1=p2;}});
-const up=()=>{pad.down=false;};
-padEl.addEventListener('pointerup',up);padEl.addEventListener('pointercancel',up);padEl.addEventListener('pointerleave',up);
+const up=e=>{if(e.pointerId===pad.id){pad.down=false;pad.id=null;}};
+padEl.addEventListener('pointerup',up);padEl.addEventListener('pointercancel',up);padEl.addEventListener('lostpointercapture',up);
 $('#sgClear').onclick=()=>setupPad();
 function padImage(){
   const c=$('#pad');const g=c.getContext('2d');const w=c.width,h=c.height;const d=g.getImageData(0,0,w,h).data;
