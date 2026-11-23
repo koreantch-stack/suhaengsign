@@ -522,6 +522,8 @@ function fitCol(bigo,V,rowY,prevRight,pageW){
 
 const EXCL=['성명','이름','성함','번호','연번','비고','서명','확인','날인','직책','직위','직명','소속','부서','교과','담당','교장','교감','결재','연수','합계','일시','장소','강사'];
 const isName=s=>{const n=norm(s);return /^[가-힣]{2,5}$/.test(n)&&!EXCL.includes(n);};
+const isNameLoose=s=>{const n=norm(s);return n.length>=2&&n.length<=30&&/^[가-힣A-Za-z][가-힣A-Za-z0-9·.\-'’`()]*$/.test(n)&&!EXCL.includes(n);};
+const nameOf=c=>{const t=String(c.s||'').replace(/\s+/g,' ').trim();return /[A-Za-z]/.test(t)?t:norm(t);};
 const SIGK=['서명','서명란','날인','서명(날인)','서명또는날인','(서명)','확인','확인(서명)','본인확인','서명(인)'];
 const NAMEK=['성명','이름','성함'];
 const ROLEK=['직책','직위','직명','직급','보직'];
@@ -541,11 +543,11 @@ async function analyzeRegPage(pi){
     const rows=[];let prevRight=null;
     for(const L of lines){
       if(L.y<=Math.max(H.y,nh.y)+1)continue;
-      const nc=L.cells.find(c=>c.x0>leftBound&&c.x1<H.x0&&Math.abs(cxOf(c)-nameCx)<tol&&isName(c.s));
+      const nc=L.cells.find(c=>c.x0>leftBound&&c.x1<H.x0&&Math.abs(cxOf(c)-nameCx)<tol&&isNameLoose(c.s));
       if(!nc)continue;
       const rc=rh?L.cells.find(c=>c!==nc&&c.x0>leftBound&&c.x1<H.x0&&Math.abs(cxOf(c)-cxOf(rh))<Math.max(16,(rh.x1-rh.x0)*1.3)):null;
       for(const c of L.cells)if(c.x0>leftBound&&cxOf(c)<H.x0-1)prevRight=Math.max(prevRight??-1e9,c.x1);
-      rows.push({y:L.y,h:L.h,name:norm(nc.s),role:rc?rc.s.trim():''});
+      rows.push({y:L.y,h:L.h,name:nameOf(nc),role:rc?rc.s.trim():''});
     }
     if(rows.length){
       fitRows(rows,D.H,cxOf(H));

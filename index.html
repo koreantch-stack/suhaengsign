@@ -86,7 +86,7 @@ details summary{cursor:pointer;font-weight:600}
 .slist{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .sbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:14px;min-height:76px;text-align:left}
 .sbtn .no{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
-.sbtn .nm{font-size:1.15rem}
+.sbtn .nm{font-size:1.15rem;overflow-wrap:anywhere;line-height:1.3}.sbtn .nm.long{font-size:.98rem}
 .sbtn.done{background:var(--ok-soft);border-color:var(--ok)}
 .sbtn.done .no::after{content:" · 서명 완료";color:var(--ok)}
 .center{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center}
@@ -399,6 +399,8 @@ async function pageData(pi){
 /* ---------- 자동 인식 ---------- */
 const EXCL=['성명','이름','번호','비고','합계','총점','평균','학번','담임','교사','과목','학년','점수','만점','확인','서명','교과','담당','교감','교장','결재','평가','영역','반'];
 const isName=s=>{const n=norm(s);return /^[가-힣]{2,5}$/.test(n)&&!EXCL.includes(n);};
+const isNameLoose=s=>{const n=norm(s);return n.length>=2&&n.length<=30&&/^[가-힣A-Za-z][가-힣A-Za-z0-9·.\-'’`()]*$/.test(n)&&!EXCL.includes(n);};
+const nameOf=c=>{const t=String(c.s||'').replace(/\s+/g,' ').trim();return /[A-Za-z]/.test(t)?t:norm(t);};
 const fmtNum=v=>{const t=String(v??'').trim();return /^\d+\.\d+$/.test(t)?String(parseFloat(t)):t;};
 // 두 줄로 나뉜 머리글을 이을 때, 한글끼리 이어지면 붙여 쓴다
 function joinParts(parts){let out='';for(const p of parts){if(!p)continue;if(!out){out=p;continue;}
@@ -457,7 +459,7 @@ async function analyzePage(pi){
   const studs=[];
   for(const L of lines){
     if(L.y<=bigo.y+1)continue;
-    const nc=L.cells.find(c=>Math.abs(cxOf(c)-nameCx)<tol&&isName(c.s)&&c.x1<bigo.x0);
+    const nc=L.cells.find(c=>Math.abs(cxOf(c)-nameCx)<tol&&(nameH?isNameLoose:isName)(c.s)&&c.x1<bigo.x0);
     if(nc)studs.push({L,nc});
   }
   if(!studs.length)return null;
@@ -491,7 +493,7 @@ async function analyzePage(pi){
       let bi=-1,bd=1e9;colsX.forEach((cx,i)=>{const d=Math.abs(cx-x);if(d<bd){bd=d;bi=i;}});
       if(bi>=0)scores[bi]=(scores[bi]?scores[bi]+' ':'')+c.s.trim();}
     for(let i=0;i<scores.length;i++)scores[i]=fmtNum(scores[i]);
-    return{page:pi,no:s.no,name:norm(s.nc.s),y:s.L.y,h:s.L.h,scores};
+    return{page:pi,no:s.no,name:nameOf(s.nc),y:s.L.y,h:s.L.h,scores};
   });
   const bx=cxOf(bigo);
   fitRows(rows,D.H,bx);
@@ -615,7 +617,7 @@ function openList(){
   show('scr-list');keepAwake();
   const done=S.students.filter(s=>S.sigs[s.id]).length;
   $('#listProg').textContent=`서명 ${done}명 / 전체 ${S.students.length}명`;
-  $('#slist').innerHTML=S.students.map((s,i)=>`<button class="sbtn ${S.sigs[s.id]?'done':''}" data-pick="${i}"><span class="no">${esc(noLabel(s.no).trim())}</span><span class="nm">${esc(s.name)}</span></button>`).join('');
+  $('#slist').innerHTML=S.students.map((s,i)=>`<button class="sbtn ${S.sigs[s.id]?'done':''}" data-pick="${i}"><span class="no">${esc(noLabel(s.no).trim())}</span><span class="nm${s.name.length>8?' long':''}">${esc(s.name)}</span></button>`).join('');
 }
 $('#btnStudent').onclick=()=>{if(!S.students.length){msg($('#rvMsg'),'학생 명단이 비어 있습니다.','err');return;}openList();};
 $('#slist').onclick=e=>{const b=e.target.closest('[data-pick]');if(!b)return;current=S.students[+b.dataset.pick];
