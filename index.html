@@ -399,8 +399,8 @@ async function pageData(pi){
 /* ---------- 자동 인식 ---------- */
 const EXCL=['성명','이름','번호','비고','합계','총점','평균','학번','담임','교사','과목','학년','점수','만점','확인','서명','교과','담당','교감','교장','결재','평가','영역','반'];
 const isName=s=>{const n=norm(s);return /^[가-힣]{2,5}$/.test(n)&&!EXCL.includes(n);};
-const isNameLoose=s=>{const n=norm(s);return n.length>=2&&n.length<=30&&/^[가-힣A-Za-z][가-힣A-Za-z0-9·.\-'’`()]*$/.test(n)&&!EXCL.includes(n);};
-const nameOf=c=>{const t=String(c.s||'').replace(/\s+/g,' ').trim();return /[A-Za-z]/.test(t)?t:norm(t);};
+const isNameLoose=s=>{const n=norm(s).normalize('NFKC');return n.length>=2&&n.length<=30&&/^\p{L}[\p{L}\p{M}0-9·.\-'’`()]*$/u.test(n)&&!EXCL.includes(n);};
+const nameOf=c=>{const t=String(c.s||'').replace(/\s+/g,' ').trim();return /[^가-힣\s]/.test(t)?t.normalize('NFKC'):norm(t);};
 const fmtNum=v=>{const t=String(v??'').trim();return /^\d+\.\d+$/.test(t)?String(parseFloat(t)):t;};
 // 두 줄로 나뉜 머리글을 이을 때, 한글끼리 이어지면 붙여 쓴다
 function joinParts(parts){let out='';for(const p of parts){if(!p)continue;if(!out){out=p;continue;}

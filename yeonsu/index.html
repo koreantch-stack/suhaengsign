@@ -522,8 +522,8 @@ function fitCol(bigo,V,rowY,prevRight,pageW){
 
 const EXCL=['성명','이름','성함','번호','연번','비고','서명','확인','날인','직책','직위','직명','소속','부서','교과','담당','교장','교감','결재','연수','합계','일시','장소','강사'];
 const isName=s=>{const n=norm(s);return /^[가-힣]{2,5}$/.test(n)&&!EXCL.includes(n);};
-const isNameLoose=s=>{const n=norm(s);return n.length>=2&&n.length<=30&&/^[가-힣A-Za-z][가-힣A-Za-z0-9·.\-'’`()]*$/.test(n)&&!EXCL.includes(n);};
-const nameOf=c=>{const t=String(c.s||'').replace(/\s+/g,' ').trim();return /[A-Za-z]/.test(t)?t:norm(t);};
+const isNameLoose=s=>{const n=norm(s).normalize('NFKC');return n.length>=2&&n.length<=30&&/^\p{L}[\p{L}\p{M}0-9·.\-'’`()]*$/u.test(n)&&!EXCL.includes(n);};
+const nameOf=c=>{const t=String(c.s||'').replace(/\s+/g,' ').trim();return /[^가-힣\s]/.test(t)?t.normalize('NFKC'):norm(t);};
 const SIGK=['서명','서명란','날인','서명(날인)','서명또는날인','(서명)','확인','확인(서명)','본인확인','서명(인)'];
 const NAMEK=['성명','이름','성함'];
 const ROLEK=['직책','직위','직명','직급','보직'];
