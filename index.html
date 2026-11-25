@@ -105,6 +105,8 @@ details summary{cursor:pointer;font-weight:600}
 .modal .card{width:min(420px,100%)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));background:var(--ok);color:#fff;padding:12px 20px;border-radius:999px;font-weight:600;z-index:30}
 @media (prefers-reduced-motion:no-preference){.sbtn,button{transition:background .15s,border-color .15s}}
+#scr-sign,#scr-sign *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#dgBox{position:fixed;right:8px;top:8px;z-index:50;background:rgba(0,0,0,.82);color:#fff;font:14px/1.5 system-ui,sans-serif;padding:10px 12px;border-radius:10px;max-width:300px;white-space:pre-line;font-variant-numeric:tabular-nums;pointer-events:none}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
@@ -634,6 +636,24 @@ function openSign(){
 $('#sgCancel').onclick=()=>{current=null;openList();};
 
 /* 서명 패드 */
+/* 서명 화면: 글자 선택·길게 누르기 방지, 숨은 진단(제목을 1.5초 안에 5번 누르면 켜고 끔) */
+const dg={on:false,n:0,t0:0,box:null,timer:0,m:null};
+function dgReset(){dg.m={moves:0,gapMax:0,gapSum:0,gapN:0,last:0,lagSum:0,lagN:0,lagMax:0,flushSum:0,flushN:0,flushMax:0,fr:[],lastF:0,start:performance.now(),peak:0,sec:{}};}
+function dgMove(e,isDown){const m=dg.m,now=performance.now();m.moves++;
+  if(!isDown&&m.last){const gp=now-m.last;m.gapSum+=gp;m.gapN++;if(gp>m.gapMax)m.gapMax=gp;}m.last=isDown?0:now;
+  const lag=now-e.timeStamp;if(lag>=0&&lag<5000){m.lagSum+=lag;m.lagN++;if(lag>m.lagMax)m.lagMax=lag;}
+  const s=Math.floor((now-m.start)/1000);m.sec[s]=(m.sec[s]||0)+1;if(m.sec[s]>m.peak)m.peak=m.sec[s];}
+function dgFlush(t0){const m=dg.m,d=performance.now()-t0;m.flushSum+=d;m.flushN++;if(d>m.flushMax)m.flushMax=d;}
+function dgLoop(t){if(!dg.on)return;const m=dg.m;if(m.lastF){const d=t-m.lastF;if(d<500){m.fr.push(d);if(m.fr.length>240)m.fr.shift();}}m.lastF=t;requestAnimationFrame(dgLoop);}
+function dgRender(){const m=dg.m,f=v=>Number.isFinite(v)?v.toFixed(1):'-';
+  const avg=(s,n)=>n?s/n:NaN,fr=m.fr.length?m.fr.reduce((a,b)=>a+b,0)/m.fr.length:NaN,frMax=m.fr.length?Math.max(...m.fr):NaN;
+  dg.box.textContent='진단 (제목 5번 누르면 끔)\n입력 '+m.moves+'회, 초당 최대 '+m.peak+'\n전달 지연 평균 '+f(avg(m.lagSum,m.lagN))+' / 최대 '+f(m.lagMax)+' ms\n입력 공백 최대 '+f(m.gapMax)+' ms\n그리기 시간 평균 '+f(avg(m.flushSum,m.flushN))+' / 최대 '+f(m.flushMax)+' ms\n화면 갱신 평균 '+f(fr)+' / 최대 '+f(frMax)+' ms';}
+function dgToggle(){dg.on=!dg.on;
+  if(dg.on){dgReset();if(!dg.box){dg.box=document.createElement('div');dg.box.id='dgBox';document.body.appendChild(dg.box);}dg.box.hidden=false;requestAnimationFrame(dgLoop);dg.timer=setInterval(dgRender,700);dgRender();}
+  else{clearInterval(dg.timer);if(dg.box)dg.box.hidden=true;}}
+['selectstart','contextmenu','dragstart'].forEach(t=>$('#scr-sign').addEventListener(t,e=>e.preventDefault()));
+$('#sgWho').addEventListener('click',()=>{const n=performance.now();dg.n=(n-dg.t0<1500)?dg.n+1:1;dg.t0=n;if(dg.n>=5){dg.n=0;dgToggle();}});
+
 const pad={drawn:false,down:false,p0:null,p1:null,g:null,rect:null,id:null,pen:false,q:[],raf:0,pr:null};
 function setupPad(){
   const c=$('#pad');const r=c.getBoundingClientRect();const d=window.devicePixelRatio||1;
@@ -647,7 +667,7 @@ function pt(e){const r=pad.rect;let w=4.5;
   if(e.pointerType==='pen'&&e.pressure>0){pad.pr=pad.pr==null?e.pressure:pad.pr*0.7+e.pressure*0.3;w=2.4+pad.pr*3;}
   return{x:e.clientX-r.left,y:e.clientY-r.top,w};}
 const padEl=$('#pad');
-padEl.addEventListener('pointerdown',e=>{e.preventDefault();
+padEl.addEventListener('pointerdown',e=>{e.preventDefault();if(dg.on)dgMove(e,true);
   if(e.pointerType==='pen')pad.pen=true;
   if(pad.pen&&e.pointerType==='touch')return;
   if(pad.down&&e.pointerId!==pad.id)return;
@@ -656,14 +676,15 @@ padEl.addEventListener('pointerdown',e=>{e.preventDefault();
   pad.down=true;pad.id=e.pointerId;pad.pr=null;pad.q=[];const p=pt(e);pad.p0=pad.p1=p;
   const g=pad.g;g.beginPath();g.arc(p.x,p.y,p.w/2,0,Math.PI*2);g.fill();
   if(!pad.drawn){pad.drawn=true;$('#padHint').hidden=true;$('#sgOk').disabled=false;}});
-padEl.addEventListener('pointermove',e=>{if(!pad.down||e.pointerId!==pad.id)return;e.preventDefault();
+padEl.addEventListener('pointermove',e=>{if(!pad.down||e.pointerId!==pad.id)return;e.preventDefault();if(dg.on)dgMove(e);
   const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
   for(const ev of (evs.length?evs:[e]))pad.q.push(pt(ev));
   if(!pad.raf)pad.raf=requestAnimationFrame(flushPad);});
-function flushPad(){pad.raf=0;const g=pad.g;if(!g||!pad.q.length)return;const q=pad.q;pad.q=[];
+function flushPad(){pad.raf=0;const g=pad.g;if(!g||!pad.q.length)return;const q=pad.q;pad.q=[];const _t=dg.on?performance.now():0;
   for(const p2 of q){const p0=pad.p0,p1=pad.p1;
     g.beginPath();g.moveTo((p0.x+p1.x)/2,(p0.y+p1.y)/2);g.quadraticCurveTo(p1.x,p1.y,(p1.x+p2.x)/2,(p1.y+p2.y)/2);g.lineWidth=p2.w;g.stroke();
-    pad.p0=p1;pad.p1=p2;}}
+    pad.p0=p1;pad.p1=p2;}
+  if(dg.on)dgFlush(_t);}
 const up=e=>{if(e.pointerId===pad.id){if(pad.raf){cancelAnimationFrame(pad.raf);pad.raf=0;}flushPad();pad.down=false;pad.id=null;}};
 padEl.addEventListener('pointerup',up);padEl.addEventListener('pointercancel',up);padEl.addEventListener('lostpointercapture',up);
 $('#sgClear').onclick=()=>setupPad();
