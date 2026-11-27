@@ -681,7 +681,7 @@ function dgToggle(){dg.on=!dg.on;
 ['selectstart','contextmenu','dragstart'].forEach(t=>$('#scr-sign').addEventListener(t,e=>e.preventDefault()));
 $('#sgWho').addEventListener('click',()=>{const n=performance.now();dg.n=(n-dg.t0<1500)?dg.n+1:1;dg.t0=n;if(dg.n>=5){dg.n=0;dgToggle();}});
 
-const pad={drawn:false,down:false,p0:null,p1:null,g:null,rect:null,id:null,pen:false,q:[],raf:0,pr:null};
+const pad={drawn:false,down:false,p0:null,p1:null,g:null,rect:null,id:null,pen:false,q:[],raf:0,pr:null,type:'',lastMove:0};
 function setupPad(){
   const c=$('#pad');const r=c.getBoundingClientRect();const d=window.devicePixelRatio||1;
   c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);
@@ -697,13 +697,16 @@ const padEl=$('#pad');
 padEl.addEventListener('pointerdown',e=>{e.preventDefault();if(dg.on)dgMove(e,true);
   if(e.pointerType==='pen')pad.pen=true;
   if(pad.pen&&e.pointerType==='touch')return;
-  if(pad.down&&e.pointerId!==pad.id)return;
+  // 손가락 두 개가 거의 동시에 닿은 경우만 무시. 펜은 이전 획이 안 끝난 것처럼 보여도 항상 새 획으로 받는다
+  if(e.pointerType==='touch'&&pad.type==='touch'&&pad.down&&e.pointerId!==pad.id&&performance.now()-pad.lastMove<120)return;
+  if(pad.down){if(pad.raf){cancelAnimationFrame(pad.raf);pad.raf=0;}flushPad();}
+  pad.type=e.pointerType;pad.lastMove=performance.now();
   pad.rect=padEl.getBoundingClientRect();
   try{padEl.setPointerCapture(e.pointerId);}catch(_){}
   pad.down=true;pad.id=e.pointerId;pad.pr=null;pad.q=[];const p=pt(e);pad.p0=pad.p1=p;
   const g=pad.g;g.beginPath();g.arc(p.x,p.y,p.w/2,0,Math.PI*2);g.fill();
   if(!pad.drawn){pad.drawn=true;$('#padHint').hidden=true;$('#sgOk').disabled=false;}});
-padEl.addEventListener('pointermove',e=>{if(!pad.down||e.pointerId!==pad.id)return;e.preventDefault();if(dg.on)dgMove(e);
+padEl.addEventListener('pointermove',e=>{if(!pad.down||e.pointerId!==pad.id)return;e.preventDefault();pad.lastMove=performance.now();if(dg.on)dgMove(e);
   const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
   for(const ev of (evs.length?evs:[e]))pad.q.push(pt(ev));
   if(!pad.raf)pad.raf=requestAnimationFrame(flushPad);});
